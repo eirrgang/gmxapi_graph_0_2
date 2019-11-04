@@ -10,7 +10,7 @@ Welcome to gmxapi_graph_0_2's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+   workspec_schema_0_2.rst
 
 Indices and tables
 ==================

@@ -2,7 +2,7 @@
 Work specification schema
 =========================
 
-..  contents:: Draft version 3 (30 September 2019)
+..  contents:: Draft version 4 (2 November 2019)
     :local:
     :depth: 2
 
@@ -27,6 +27,11 @@ Simple simulation using :ref:`data sources <simulation input>` produced by previ
                   "simulation_state": "initial_state_<hash>",
                   "microstate": "initial_coordinates_<hash>"
                },
+               "output":
+               {
+                  "trajectory": "gmxapi.Trajectory",
+                  "parameters": "gmxapi.Mapping"
+               },
                "depends": []
            }
    }
@@ -50,7 +55,7 @@ pluggable extension module::
                "operation": "read_tpr",
                "input":
                {
-                  "filename": [["topol.tpr"]]
+                  "filename": ["topol.tpr"]
                },
                "output":
                {
@@ -76,80 +81,81 @@ pluggable extension module::
                {
                    "params": {},
                },
-               "interface": ["potential"]
+               "interface": ["gromacs.restraint"]
            }
        }
    }
 
-.. .. rubric:: Example
+.. rubric:: Example
 
-    Illustrate the implementation of the command line wrapper.
+Illustrate the implementation of the command line wrapper.
 
-    The *gmxapi* Python package contains a helper :py:func:`gmxapi.commandline_operation`
-    that was implemented in terms of more strictly defined operations.
-    The :py:func:`gmxapi.commandline.cli` operation is aware only of an arbitrarily
-    long array of command line arguments. The wrapper script constructs the
-    necessary graph elements and data flow to give the user experience of files
-    being consumed and produced, though these files are handled in the framework
-    only as strings and string futures.
+The *gmxapi* Python package contains a helper :py:func:`gmxapi.commandline_operation`
+that was implemented in terms of more strictly defined operations.
+The :py:func:`gmxapi.commandline.cli` operation is aware only of an arbitrarily
+long array of command line arguments. The wrapper script constructs the
+necessary graph elements and data flow to give the user experience of files
+being consumed and produced, though these files are handled in the framework
+only as strings and string futures.
 
-    Graph node structure example::
+Graph node structure example::
 
+    {
+        "version": "gmxapi_graph_0_2",
+        "elements":
         {
-            "version": "gmxapi_graph_0_2",
-            "elements":
-            {
-                "filemap_aaaaaa": {
-                    operation: "make_map",
-                    "input": {
-                        "-f": ["some_filename"],
-                        "-t": ["filename1", "filename2"]
-                    },
-                    "output": {
-                        "file": "gmxapi.Map"
-                    }
+            "filemap_aaaaaa": {
+                "namespace": "gmxapi",
+                "operation": "make_map",
+                "input": {
+                    "-f": ["some_filename"],
+                    "-t": ["filename1", "filename2"]
                 },
-                "cli_op_aaaaaa": {
-                    "label": "exe1",
-                    "namespace": "gmxapi",
-                    "operation": "cli",
-                    "input": {
-                        "executable": ["some_executable"], # list length gives ensemble width
-                        "arguments": [[]], # Nested list allows disambiguation of array data within a single ensemble member.
-                        "input_file_arguments": "filemap_aaaaaa",
-                        # Complex values can use indirection to helper operations
-                        # to reduce parsing complexity.
-                        # Alternatively,
-                        # we could make parsing recursive and allow arbitrary nesting
-                        # with special semantics for dictionaries (as well as lists)
-                    },
-                    "output": {
-                        "file": "gmxapi.Map"
-                    }
+                "output": {
+                    "file": "gmxapi.Mapping"
+                }
+            },
+            "cli_op_aaaaaa": {
+                "label": "exe1",
+                "namespace": "gmxapi",
+                "operation": "cli",
+                "input": {
+                    "executable": ["some_executable"], # list length gives data edge width
+                    "arguments": [[]], # Nested list allows disambiguation of array data within a single ensemble member.
+                    "input_file_arguments": "filemap_aaaaaa",
+                    # Complex values can use indirection to helper operations
+                    # to reduce parsing complexity.
+                    # Alternatively,
+                    # we could make parsing recursive and allow arbitrary nesting
+                    # with special semantics for dictionaries (as well as lists)
                 },
-                "filemap_bbbbbb: {
-                    "label": "exe1_output_files",
-                    "namespace": "gmxapi",
-                    "operation": "make_map",
-                    "input": {
-                        "-in1": "cli_op_aaaaaa.output.file.-o",
-                        "-in2": ["static_fileB"],
-                        "-in3": ["arrayfile1", "arrayfile2"] # matches dimensionality of inputs
-                    }
+                "output": {
+                    "file": "gmxapi.Mapping"
+                }
+            },
+            "filemap_bbbbbb: {
+                "label": "exe1_output_files",
+                "namespace": "gmxapi",
+                "operation": "make_map",
+                "input": {
+                    "-in1": "cli_op_aaaaaa.output.file.-o",
+                    "-in2": ["static_fileB"],
+                    "-in3": ["arrayfile1", "arrayfile2"] # matches dimensionality of inputs
+                }
+            },
+            "cli_op_bbbbbb": {
+                "label": "exe2",
+                "namespace": "gmxapi",
+                "operation": "commandline",
+                "input": {
+                    "executable": [],
+                    "arguments": [],
+                    "input_file_arguments": "filemap_bbbbbb"
                 },
-                "cli_op_bbbbbb": {
-                    "label": "exe2",
-                    "namespace": "gmxapi",
-                    "operation": "commandline",
-                    "input": {
-                        "executable": [],
-                        "arguments": [],
-                        "input_file_arguments": "filemap_bbbbbb"
-                    },
-                },
+            },
 
-            }
         }
+    }
 
 .. rubric:: Example
 
@@ -431,6 +437,21 @@ complete work. We have separated work node *name* into *uid*
 and *label*, where *label* is a non-canonical and non-required part of a work
 graph representation.
 
+Expressing interfaces
+---------------------
+
+Operation outputs and other interfaces are listed as key-value pairs of *port*
+name and interface type. The interface type may be a data type specified by
+gmxapi, or some other resource defined in the prefixed namespace. Interfaces
+may represent mutable or immutable resources. The deserializer is responsible
+for acquiring appropriate binding code from the source operation implementation,
+sink operation implementation, and (if distinct) the module defining the
+resource type.
+
+By convention, immutable data interfaces are named with capital letters to be
+consistent with naming conventions for data classes, but this is not (yet) a
+requirement.
+
 Middleware API: work record
 ===========================
 
@@ -495,15 +516,6 @@ The JSON data should be utf-8 compatible, but note that JSON codecs probably map
 objects on the program side to un-annotated strings in the serialized data
 (encoding is at the level of the entire byte stream).
 
-TODO:
-*Define the deterministic way to identify a work graph and its artifacts for
-persistence across interruptions and to avoid duplication of work...*
-
-.. _grammar:
-
-Work graph grammar and schema
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 Names (labels and UIDs) in the work graph are strings from the ASCII / Latin-1 character set.
 Periods (``.``) have special meaning as delimiters.
 
@@ -511,18 +523,189 @@ Bare string values are interpreted as references to other work graph entities
 or API facilities known to the Context implementation.
 Strings in lists are interpreted as strings.
 
-.. todo:: Consider disallowing bare scalar constants.
-   This would provide consistent handling of strings (as above) with other
-   singular constant inputs while disambiguating between data and internal
-   (document) references.
+TODO:
+*Define the deterministic way to identify a work graph and its artifacts for
+persistence across interruptions and to avoid duplication of work...*
 
-   Since we are already seeing unnecessary complication in programmatically
-   handling array versus scalar data, it could be generally simpler, anyway,
-   to treat scalar data as just array data in which the API has been used to
-   require an array of shape *(1,)*.
+.. _grammar:
 
+Grammar
+~~~~~~~
+
+.. rubric:: Input value.
+
+Inputs appear as key-value pairs (expressed in JSON format in this document) for
+which the key is a string and the value is either literal data, a collection,
+or a reference to another graph entity.
+In `JSON <http://www.json.org>`_ serialized form, the value is
+either an *array*, an *object*, or a *string* with constraints described below.
+
+Literal data is serialized as arrays of integers,
+floating point numbers, strings, or other arrays.
+The structures formed by
+nested arrays must have regular shape and uniform type.
+
+.. note:: All data has shape. There are no bare scalars, since they can be
+   represented as arrays of shape ``(1,)``.
+
+.. todo:: How should we optimize arrays of strings? We could let arrays contain
+   references to long strings defined as separate 1-dimensional objects, but
+   that would include expanding the schema to allow arrays of references, which
+   we have avoided in the current document because of the challenges of
+   disambiguating strings from references in the serialized form.
+
+References to other entities in the graph are presented as bare string literals
+with the following grammar constraints.
+
+::
+
+    reference
+        nestedobject
+        nestedobject delimiter label
+
+    nestedobject
+        objectname delimiter objectname
+        nestedobject delimiter objectname
+
+    delimiter
+        '.'
+
+The following
+definitions clarify two forms of element used in string-based naming. *objectname*
+strings have stricter requirements because they are likely to directly map to
+coding constructs, whereas *label* strings are likely to appear only as keys to
+associative mappings and may have more relaxed rules. Specifically, *objectname*
+must begin with a letter and may not contain hyphens.
+Some additional symbols are omitted for conciseness.
+These are *string* (a sequence of characters from the *latin-1* character set),
+*integer*, and *letter* (the 52 alphabetic characters from *latin-1* in the
+contiguous blocks 'a' - 'z' and 'A' - 'Z').
+
+::
+
+    objectnamecharacter
+        '_'
+        letter
+        integer
+        ""
+
+    objectnamecharacters
+        objectnamecharacter objectnamecharacters
+
+    objectname
+        letter
+        letter objectnamecharacters
+
+    subscript
+        '[' label ']'
+
+    labelcharacter
+        '-'
+        '_'
+        letter
+        integer
+
+    labelcharacters
+        labelcharacter
+        labelcharacter labelcharacters
+
+    label
+        labelcharacters
+        label subscript
+
+
+Embedding references in structured data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Initially, *gmxapi_graph_0_2* assumes that references are not contained within
+serialized value structures. Where necessary, we can use helper operations to
+create new references composed from combinations of lower-dimensional references
+and literal data.
+
+This section discusses future options for distinguishing string literals from
+node references in nested structures.
+
+Consider the following serialized object member::
+
+    "value": ["mdrun1.output.trajectory", "mdrun2.output.trajectory"]
+
+How do we determine whether this is a ``(2,)`` shaped reference to two trajectory
+outputs, versus a list of two strings?
+
+Is the operation definition considered when deserializing object members or
+should the serialized data be unambiguous without context? This question is
+relevant to the determination of the shape and dimensionality of resources.
+
+.. rubric:: Option
+
+Require all literals to have a final dimension of size unity. In order to avoid
+ambiguity, empty dimensions beyond this requirement must be removed.
+
+There are no bare scalar constants: all data has *shape*.
+A single scalar value is the sole element of data with shape ``(1,)``
+and therefore appears with at least one pair of enclosing list
+delimiters, e.g. ``"value": [42]``
+
+``"value": "mdrun1.output.trajectory"`` unambiguously refers to another graph
+entity.
+
+``"value": ["mdrun1.output.trajectory"]`` refers to a single string literal.
+
+``"value": ["mdrun1.output.trajectory", "mdrun2.output.trajectory"]`` is a list
+of two references.
+
+``"value": [["mdrun1.output.trajectory"], ["mdrun2.output.trajectory"]]`` is a
+list of two string literals.
+
+``"value": ["mdrun1.output.trajectory", ["mdrun2.output.trajectory"]]`` is a
+list of one reference and one string literal.
+
+``"value": [["mdrun1.output.trajectory"]]`` is invalid.
+
+``"value": [["mdrun1.output.trajectory", ["mdrun2.output.trajectory"]]]`` is invalid.
+
+``"value": 42`` is invalid.
+
+``"value": [42]`` is an integer with shape ``(1,)``.
+
+``"value": [[42]]`` is invalid.
+
+Caveats:
+
+* The dimensionality of an input's serialized record cannot indicate the graph
+  topology without details of the operation implementation.
+* Scatter operations cannot be well defined until the consumer(s) are known.
+  This likely means that ``scatter`` is not truly an operation, but, at best,
+  an annotation.
+
+.. rubric:: Option
+
+Require all string literals to be enclosed in a 1-element list.
+
+
+Additional cases:
+
+Prevent broadcasting?
+
+Force scatter with broadcast? (E.g. send each element of a (10,) array to 10
+consumers, each of which consumes an array of 10 values.)
+
+A data dimension must be populated
+
+..
    It also simplifies uniqueness checks, where ``["string"]`` and ``[["string"]]``
    (or ``0``, ``[0]``, and ``[[0]]``) would otherwise need to be parsed as equivalent.
+
+Topology
+~~~~~~~~
+
+The topology of the graph data is well defined in the serialized record.
+API handles may have implicit higher dimensions accommodating parallel computation,
+but the graph data dimensions are explicitly represented in both operation
+input and output.
+
+Schema
+~~~~~~
 
 When an element is being evaluated for deserialization / instantiation, the
 *namespace* and *operation* are looked up in the API registry for a dispatching
@@ -709,6 +892,12 @@ operations at session launch.
 * Dependency direction affects sequencing of Director calls when launching a session,
   but also may be used at some point to manage checkpoints or data flow state
   checks at a higher level than the execution graph.
+
+Question: What do we want to say about the topology due to outputs that are
+arrays? Generally, it is hard to know the size and shape of an array before the
+operation executes. Can topology be dynamic? Should we insist that array
+dimensionality must asserted when the node is created? Or are we simply not able
+to scatter from arrays that are operation outputs?
 
 Core API roles and collaborations
 =================================
@@ -1049,9 +1238,9 @@ consistent proxy interface to operation data. Several object properties provide
 accessors that are forwarded to the context.
 
 .. These may seem like redundant scoping while operation instances are essentially
-immutable, but with more graph manipulation functionality, we can make future
-operation proxies more mutable. Also, we might add extra utilities or protocols
-at some point, so we include the scoping from the beginning.
+   immutable, but with more graph manipulation functionality, we can make future
+   operation proxies more mutable. Also, we might add extra utilities or protocols
+   at some point, so we include the scoping from the beginning.
 
 ``input`` contains the input ports of the operation. Allows a typed graph edge. Can
 contain static information or a reference to another gmxapi object in the work graph.
@@ -1238,14 +1427,14 @@ The remaining content in this document is automatically extracted from the
 module shortly, but the intent is that the module will also contain syntax and
 schema checkers.
 
-Specification
--------------
+Specification: :py:mod:`gmxapi._workspec_0_2`
+---------------------------------------------
 
 ..  automodule:: gmxapi._workspec_0_2
     :members:
 
-Helpers
--------
+Helpers: :py:mod:`gmxapi._workspec_0_2.util`
+--------------------------------------------
 
 ..  automodule:: gmxapi._workspec_0_2.util
     :members:

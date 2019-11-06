@@ -112,10 +112,11 @@ not affect the part of the workflow that fed those results, such as a change tha
 trajectory time. Other than the intentional ambiguity that could be introduced with parameter semantics in the previous
 paragraph,
 
-Serialization
--------------
+Serialization conventions
+-------------------------
 
-The work graph has a basic grammar and structure that maps well to basic data structures.
+The work graph has a basic grammar and structure that maps well to common basic data structures,
+particularly in Python.
 We use JSON for serialization of a Python dictionary.
 
 Integers and floating point numbers are 64-bit.
@@ -127,31 +128,58 @@ objects on the program side to un-annotated strings in the serialized data
 Names (labels and UIDs) in the work graph are strings from the ASCII / Latin-1 character set.
 Periods (``.``) have special meaning as delimiters.
 
-Bare string values are interpreted as references to other work graph entities
-or API facilities known to the Context implementation.
-Strings in lists are interpreted as strings.
+Some restrictions and special meanings are imposed on keys (object names or labels).
+
+Object values represent a small number of structured data types with restrictions
+noted below.
+
+Data dimensionality and graph topology is unambiguous with minimal processing
+apart from the underlying deserialization.
 
 TODO:
 *Define the deterministic way to identify a work graph and its artifacts for
-persistence across interruptions and to avoid duplication of work...*
+persistence across interruptions and to avoid duplication of work. I.e. fingerprinting.*
 
 .. _grammar:
 
 Grammar
 ~~~~~~~
 
-.. rubric:: Input value.
+.. rubric:: Input values.
 
 Inputs appear as key-value pairs (expressed in JSON format in this document) for
 which the key is a string and the value is either literal data, a collection,
 or a reference to another graph entity.
-In `JSON <http://www.json.org>`_ serialized form, the value is
-either an *array*, an *object*, or a *string* with constraints described below.
+In `JSON <http://www.json.org>`_ serialized form, values are either *array* or
+*object*.
+
+JSON *objects* represent either "collections" or "meta" objects. "meta" objects have
+a single member named "meta". Its value is an object with a single key that
+determines how the meta object is to be processed, as documented below.
+"Meta" objects are used to implement details that are otherwise not easily
+represented in JSON form. "meta" is necessarily a reserved key word that may not
+be used as an identifier for an *objectname*, *label*, or other user-facing entity.
+
+Often, only one type of meta object makes sense in a particular situation, and
+the nesting of a ``"meta": {...}`` member may seem superfluous. However, by
+adopting this convention, we limit the growth in complexity of high-level parsing.
+Parsers only need to look for a single key word ("meta") to dispatch handling
+for standard or "meta-API" code paths.
+
+Collections are mappings of keys to values. They are represented as JSON *objects*.
+Keys must be strings, but are additionally subject to limitations described below.
+A JSON *object* is treated as a collection if and only if it does not contain a
+"meta" key.
 
 Literal data is serialized as arrays of integers,
 floating point numbers, strings, or other arrays.
 The structures formed by
-nested arrays must have regular shape and uniform type.
+nested arrays must have regular shape and uniform type,
+with the following caveat.
+
+JSON *objects* may occur in arrays with special meaning.
+Specifically, internal references can be made to other entities present in the
+graph or known to the Context.
 
 .. note:: All data has shape. There are no bare scalars, since they can be
    represented as arrays of shape ``(1,)``.
@@ -162,8 +190,40 @@ nested arrays must have regular shape and uniform type.
    we have avoided in the current document because of the challenges of
    disambiguating strings from references in the serialized form.
 
-References to other entities in the graph are presented as bare string literals
-with the following grammar constraints.
+.. todo:: We should explore whether additional specification is warranted to
+   describe a meta-API for light-weight operations, generalizing the internal
+   reference scheme. Object key-value pairs are processed as meta-data for
+   light-weight operations, such as to implement references to other entities
+   present in the graph or known to the Context.
+
+References are made using "meta" objects. An object with the key "meta"
+holds an object with a member ``"key": "reference"`` and a member named "value"
+containing the string form of the reference. The string will be processed in the
+Context to resolve an internal reference according to the grammar below.
+A reference may refer to another entity in the graph or to another resource
+knowable by the Context.
+
+Collections do not appear in arrays. Instead, data dimensionality occurs
+exclusively in the collection member values. Collections are represented as
+JSON *objects*. As noted, a collection may not use the special key, "meta".
+
+Array values obtained through a generic JSON deserializer will require multiple
+passes to convert to a native binary data structure, and so may not be suitable
+for handling large data. In such cases, it will be appropriate to replace arrays
+with references to codec operations (with string-encoded binary values) or to
+entities obtainable by the Context from outside of the JSON document.
+
+.. rubric:: Reference values
+
+References occur as special objects, either contained within *arrays* (see above)
+or as standalone values.
+
+In the case of JSON serialization, a reference string is obtained from a "meta"
+object with a "reference" member, whose value is a string.
+
+The string representation of a reference to an entity resolvable by the Context
+(such as through another graph entity) is represented and interpreted using the
+following grammar.
 
 ::
 
@@ -195,9 +255,9 @@ contiguous blocks 'a' - 'z' and 'A' - 'Z').
         '_'
         letter
         integer
-        ""
 
     objectnamecharacters
+        objectnamecharacter
         objectnamecharacter objectnamecharacters
 
     objectname
@@ -205,11 +265,17 @@ contiguous blocks 'a' - 'z' and 'A' - 'Z').
         letter objectnamecharacters
 
     subscript
-        '[' label ']'
+        '[' integer ']'
+
+    hyphen
+        '-'
+
+    underscore
+        '_'
 
     labelcharacter
-        '-'
-        '_'
+        hyphen
+        underscore
         letter
         integer
 
@@ -220,93 +286,92 @@ contiguous blocks 'a' - 'z' and 'A' - 'Z').
     label
         labelcharacters
         label subscript
+        label delimiter label
 
+.. rubric:: Output values and interfaces
 
-Embedding references in structured data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Operation nodes express ownership of resources by enumerating *ports*, which
+may be nested.
 
-Initially, *gmxapi_graph_0_2* assumes that references are not contained within
-serialized value structures. Where necessary, we can use helper operations to
-create new references composed from combinations of lower-dimensional references
-and literal data.
+In JSON, *ports* are expressed as object members. A port *name* is used as a
+key, and the value is either a meta object the port resource,
+or a collection of nested named *ports*.
 
-This section discusses future options for distinguishing string literals from
-node references in nested structures.
+The *name* should be user-friendly, but may be almost any sequence of
+*labelcharacters* that is unique in the scope of the node outputs and suitable
+for reference, as described above.
 
-Consider the following serialized object member::
+The "output" port of the node is reserved for immutable resources. It may
+describe an immutable type or a collection of nested outputs.
 
-    "value": ["mdrun1.output.trajectory", "mdrun2.output.trajectory"]
+The key word "meta" is reserved, and may not be used as an output name.
 
-How do we determine whether this is a ``(2,)`` shaped reference to two trajectory
-outputs, versus a list of two strings?
+The "interface" port of the node is used (by convention) for mutable resources,
+or interfaces that the interpreting Context will not be responsible for
+resolving into directed acyclic flow of immutable data events. References to
+"interface" or nested ports warrant either coscheduling or dispatch/delegation
+to another Context implementation.
 
-Is the operation definition considered when deserializing object members or
-should the serialized data be unambiguous without context? This question is
-relevant to the determination of the shape and dimensionality of resources.
+.. rubric:: Resource metadata
 
-.. rubric:: Option
+A meta object with the key "resource" provides metadata for a resource.
+Resource meta objects have a string-valued member "type" and an array-valued
+member "shape".
 
-Require all literals to have a final dimension of size unity. In order to avoid
-ambiguity, empty dimensions beyond this requirement must be removed.
+"type" is an *objectname* that the Context is able to resolve as an API entry
+point providing the operation interface and, thus, the various API-specified
+helpers for describing and instantiating graph nodes.
 
-There are no bare scalar constants: all data has *shape*.
-A single scalar value is the sole element of data with shape ``(1,)``
-and therefore appears with at least one pair of enclosing list
-delimiters, e.g. ``"value": [42]``
+"shape" is a sequence giving the size of each dimension from the outside in.
 
-``"value": "mdrun1.output.trajectory"`` unambiguously refers to another graph
-entity.
+Example: A single scalar integer output::
 
-``"value": ["mdrun1.output.trajectory"]`` refers to a single string literal.
+    "output": { "meta": { "resource": { "type": "gmxapi.Integer64", "shape": [1] } } }
 
-``"value": ["mdrun1.output.trajectory", "mdrun2.output.trajectory"]`` is a list
-of two references.
+Example: Output from an MD ensemble simulation with 10 members::
 
-``"value": [["mdrun1.output.trajectory"], ["mdrun2.output.trajectory"]]`` is a
-list of two string literals.
+    "output":
+    {
+        "parameters":
+        {
+            "meta":
+            {
+                "resource":
+                {
+                    "type": "gmxapi.Mapping",
+                    "shape": [10]
+                }
+            }
+        },
+        "trajectory":
+        {
+            "meta":
+            {
+                "resource":
+                {
+                    "type": "gmxapi.simulation.Trajectory",
+                    "shape": [10]
+                }
+            }
+        }
+    }
 
-``"value": ["mdrun1.output.trajectory", ["mdrun2.output.trajectory"]]`` is a
-list of one reference and one string literal.
+.. todo::   Note that "mapping"s and "collection"s may often be interchangeable, but in the
+            current specification we do not require that the keys and value types of a
+            Mapping are known before run time. This may not be tenable in the long run.
+            Similarly, we need to clarify the situations under which we may and may not know
+            the dimensionality or dimension sizes of array data before run time.
 
-``"value": [["mdrun1.output.trajectory"]]`` is invalid.
+.. todo:: Special meaning for bare string values? We have not specified an
+          interpretation for input object members with bare string values. We
+          could allow automatic treatment of such members as references.
 
-``"value": [["mdrun1.output.trajectory", ["mdrun2.output.trajectory"]]]`` is invalid.
-
-``"value": 42`` is invalid.
-
-``"value": [42]`` is an integer with shape ``(1,)``.
-
-``"value": [[42]]`` is invalid.
-
-Caveats:
-
-* The dimensionality of an input's serialized record cannot indicate the graph
-  topology without details of the operation implementation.
-* Scatter operations cannot be well defined until the consumer(s) are known.
-  This likely means that ``scatter`` is not truly an operation, but, at best,
-  an annotation.
-
-.. rubric:: Option
-
-Require all string literals to be enclosed in a 1-element list.
-
-.. rubric:: Option
-
-Add an additional *shape* attribute to the serialized record.
-
-
-Additional cases:
-
-Prevent broadcasting?
-
-Force scatter with broadcast? (E.g. send each element of a (10,) array to 10
-consumers, each of which consumes an array of 10 values.)
-
-A data dimension must be populated
-
-..
-   It also simplifies uniqueness checks, where ``["string"]`` and ``[["string"]]``
-   (or ``0``, ``[0]``, and ``[[0]]``) would otherwise need to be parsed as equivalent.
+.. todo:: Labels as references? We are currently requiring that references use
+          the explicit object reference structured grammar. Since we do not
+          allow periods (``.``) to be used in *labels*, we could treat reference
+          strings that do not contain periods as *labels* that must resolve in
+          the current graph. This would probably be a lot of parsing burden, so
+          the benefit would need to be clearer.
 
 Topology
 ~~~~~~~~
@@ -316,8 +381,23 @@ API handles may have implicit higher dimensions accommodating parallel computati
 but the graph data dimensions are explicitly represented in both operation
 input and output.
 
-Schema
-~~~~~~
+Dimensionality of an input value is either the dimensionality of an input array
+or the dimensionality of a referenced resource.
+
+Dimensionality of a resource is determined by its *shape* value. Note that the
+type may describe a schema in terms of another dimensioned type. Resolution of
+such a resource to a simple higher dimensional object is an implementation
+detail, but dimensions added by resolving references or types are considered
+nested, and therefore inner dimensions. If other data shaping needs to occur or
+to be represented in the graph, then helper operations may be used to consolidate
+the data representation.
+
+For example, a ``join_arrays`` operation may accept inputs of array compatible
+references from different source types to establish an "output" port with a
+single type and shape.
+
+Graph and node Schema
+---------------------
 
 When an element is being evaluated for deserialization / instantiation, the
 *namespace* and *operation* are looked up in the API registry for a dispatching
@@ -396,48 +476,10 @@ interface
   code may advertise itself as a pluggable force calculation with a
   *interface.potential* port.
 
-gmxapi_workspec_0_1
-"""""""""""""""""""
-
-.. versionadded:: 0.0.0
-
-    Operation instantiation is mediated during Session launch by the *depends*
-    field of each element. The binding protocol is unspecified, but a dependent
-    node builder is *subscribed* to the builder of the dependency before the
-    builders are called in topologically valid order, as determined by the DAG
-    implied by the *depends* network.
-
-.. seealso::
-
-   `DOI 10.1093/bioinformatics/bty484 <https://doi.org/10.1093/bioinformatics/bty484>`_
-
-gmxapi_graph_0_2
-""""""""""""""""
-
-.. versionchanged:: 0.1
-
-    Inputs, outputs, and other interfaces are explicitly represented in the
-    data structure.
-    Input ports names and types are specified by the API. Bound arguments are
-    included in the record.
-    Output ports are determined by querying the operation, so the available keys
-    and types are included in the record.
-
-Note that, in the examples, *element* keys are calculated deterministically
-by the framework to uniquely identify a node (and its output) in terms of a
-specified operation behavior and the inputs to the node.
-
-Angle brackets and the names they enclose (e.g. *<symbol>*) are not literal,
-representing variable data or values explained in this text.
-
-*<hash>* indicates a MIME-like (latin-1 compatible, base-64 encoded) string
-representation of the unique features of the operation node. This value is
-calculated by the Context with help from the Operation definition.
-
 .. _simulation input:
 
 Simulation input
-""""""""""""""""
+~~~~~~~~~~~~~~~~
 
 The API conventions allow for specification of certain hierarchical data for
 collaborating operations. For instance, we currently expect that a simulation
@@ -486,6 +528,40 @@ logic as is used when validating client input to build an always-valid DAG, one
 element at a time. Specifically, nodes are not modifiable after addition, so
 input dependencies must be resolvable when a node is added.
 
+.. versionadded:: 0.0.0
+
+    For records with *version: gmxapi_workspec_0_1*,
+    operation instantiation is mediated during Session launch by the *depends*
+    field of each element. The binding protocol is unspecified, but a dependent
+    node builder is *subscribed* to the builder of the dependency before the
+    builders are called in topologically valid order, as determined by the DAG
+    implied by the *depends* network.
+
+.. seealso::
+
+   `DOI 10.1093/bioinformatics/bty484 <https://doi.org/10.1093/bioinformatics/bty484>`_
+
+.. versionchanged:: 0.1
+
+    For records with *version: gmxapi_graph_0_2*
+    inputs, outputs, and other interfaces are explicitly represented in the
+    data structure.
+    Input ports names and types are specified by the API. Bound arguments are
+    included in the record.
+    Output ports are determined by querying the operation, so the available keys
+    and types are included in the record.
+
+Note that, in the examples, *element* keys are calculated deterministically
+by the framework to uniquely identify a node (and its output) in terms of a
+specified operation behavior and the inputs to the node.
+
+Angle brackets and the names they enclose (e.g. *<symbol>*) are not literal,
+representing variable data or values explained in this text.
+
+*<hash>* indicates a MIME-like (latin-1 compatible, base-64 encoded) string
+representation of the unique features of the operation node. This value is
+calculated by the Context with help from the Operation definition.
+
 Immutable data resources are produced as outputs and consumed as inputs.
 Additionally, some operations have interdependencies or data flow that cannot
 be resolved at the level of the work graph. We refer to these interactions
@@ -517,3 +593,7 @@ Reference implementation
 A reference implementation in Python can heavily rely on the ``json`` module,
 supplemented through the *object_hook* and *object_pairs_hook* to the
 ``json.JSONDecoder``.
+
+Note that it is non-trivial to deserialize JSON arrays directly to native arrays
+for several reasons related to the flexibility of allowed array data in the JSON
+document (most notably, the dimensionality).

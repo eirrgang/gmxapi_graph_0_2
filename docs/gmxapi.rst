@@ -1,6 +1,214 @@
 gmxapi 0.1 specification
 ========================
 
+Interfaces and/or Base classes
+------------------------------
+
+OperationFactory
+~~~~~~~~~~~~~~~~
+
+An OperationFactory receives a Context and Input, and returns an OperationHandle to the caller.
+
+Context
+~~~~~~~
+
+Variations include
+
+* GraphContext that just builds a graph that can be serialized for deserialization by another context.
+* LaunchContext that processes a graph to be run in appropriate OperationContexts. Produces a Session.
+* OperationContext or ImmediateContext that immediately executes the implemented operation
+
+NodeBuilder
+~~~~~~~~~~~
+
+``addResource()`` Configures inputs, outputs, framework requirements, and factory functions.
+``build()`` returns an OperationHandle
+
+Operation
+~~~~~~~~~
+
+The OperationHandle returned by a factory may be a an implementing object or some sort of wrapper or proxy object.
+output() provides getters for Results.
+
+Has a Runner behavior.
+
+Result
+~~~~~~
+
+gmxapi-typed output data. May be implemented with futures and/or proxies. Provides
+extract() method to convert to a valid local owning data handle.
+
+Behaviors
+---------
+
+Launcher
+~~~~~~~~
+
+Callable that accepts a Session (Context) and produces a Runnable (Operation).
+A special case of OperationDirector.
+
+Runner
+~~~~~~
+
+Takes input, runs, and returns a Runner that can be called in the same way.
+
+run() -> Runner
+run(Runner::Resources) -> Runner
+
+OperationDirector
+~~~~~~~~~~~~~~~~~
+
+Takes Context and Input to produce a Runner.
+
+Use a Context to get one or more NodeBuilders to configure the operation in a new context.
+Then return a properly configured OperationHandle for the context.
+
+Graph
+~~~~~
+
+Can produce NodeBuilders, store directorFactories.
+
+Can serialize / deserialize the workflow representation.
+
+* ``serialize()``
+* ``uid()``
+* ``newOperation()``: get a NodeBuilder
+* ``node(uid)``: getter
+* ``get_node_by_label(str)``: find uid
+* iterator
+
+OutputProxy
+~~~~~~~~~~~
+
+Service requests for Results for an Operator's output nodes.
+
+Input
+~~~~~
+
+Input is highly dependent on the implementation of the operation and the context in which
+it is executing. The important thing is that it is something that can be interpreted by a DirectorFactory.
+
+Arbitrary lists of arguments and keyword arguments can be accepted by a Python
+module director to direct the construction of one or more graph nodes or to
+get an immediately executed runner.
+
+GraphNode or serialized Operation Input is accepted by a LaunchContext or
+DispatchingContext.
+
+A runner implementing the operation execution accepts Input in the form of
+SessionResources.
+
+
+Operations
+----------
+
+Each node in a work graph represents an instance of an Operation.
+The API specifies operations that a gmxapi-compliant execution context *should* provide in
+the ``gmxapi`` namespace.
+
+All specified ``gmxapi`` operations are provided by the reference implementation in released
+versions of the ``gmx`` package. ``gmx.context.Context`` also provides operations in the ``gromacs``
+namespace. This support will probably move to a separate module, but the ``gromacs`` namespace
+is reserved and should not be reimplemented in external software.
+
+When translating a work graph for execution, the Context calls a factory function for each
+operation to get a Director. A Python-based Context *should* consult an internal map for
+factory functions for the ``gmxapi`` namespace. **TODO:** *How to handle errors?
+We don't really want middleware clients to have to import ``gmx``, but how would a Python
+script know what exception to catch? Errors need to be part of an API-specified result type
+or protocol, and/or the exceptions need to be defined in the package implementing the context.*
+
+
+*namespace* is imported (in Python: as a module).
+
+operation is an attribute in namespace that
+
+..  versionadded:: 0.0
+
+    is callable with the signature ``operation(element)`` to get a Director
+
+..  versionchanged:: 0.1
+
+    has a ``_gmxapi_graph_director`` attribute to get a Director
+
+Helper
+~~~~~~
+
+Add operation instance to work graph and return a proxy object.
+If proxy object has ``input`` or ``output`` attributes, they should forward ``getattr``
+calls to the context... *TBD*
+
+The helper makes API calls to the default or provided Context and then asks the Context for
+an object to return to the caller. Generally, this is a proxy Operation object, but when the
+context is a local context in the process of launching a session, the object can be a
+graph Director that can be used to finish configuring and launch the execution graph.
+
+Signatures
+
+``myplugin.myoperation(arg0: WorkElement) -> gmx.Operation``
+
+..  versionchanged:: 0.1
+
+    Operation helpers are no longer required to accept a ``gmx.workflow.WorkElement`` argument.
+
+``myplugin.myoperation(*args, input: inputobject, output: outputobject, **kwargs)``
+
+    inputobject : dict
+        Map of named input ports to typed gmxapi data, implicitly mappable Python objects,
+        or objects implementing the gmxapi Output interface.
+
+Some operations (``gmx.commandline``) need to provide an ``output`` keyword argument to define
+data types and/or placeholders (not represented in the work graph).
+
+    outputobject : dict
+        Map of named output ports to
+
+Additional ``args`` and ``kwargs`` may be used by the helper function to set up the work
+graph node. Note that the context will not use them when launching the operation, though,
+so ....
+
+
+.. todo::
+
+   Maybe let ``input`` and ``output`` kwargs be interpreted by the helper function, too,
+   and let the operation node input be completely specified by ``parameters``?
+
+   ``myplugin.myoperation(arg0: graph_ref, *args, parameters: inputobject, **kwargs)``
+
+.. todo::
+
+   I think we can go ahead and let ``gmx.Operation.input`` and ``gmx.Operation.output``
+   implement ``get_item``...
+
+Implementation note: the input and output attributes can have common implementations,
+provided with Python "Descriptor"s
+
+Servicing the proxy
+~~~~~~~~~~~~~~~~~~~
+
+When the Python client added the operation to the work graph, it used a helper function
+to get a reference to an Operation proxy object. This object holds a weak reference to
+the context and work graph to which it was added.
+
+
+Factory
+~~~~~~~
+
+get Director for session launch
+
+Director
+~~~~~~~~
+
+subscribable to implement data dependencies
+
+``build`` method adds ``launch`` and ``run`` objects to execution graph.
+
+To do: change ``build`` to ``construct``
+
+Session callable
+~~~~~~~~~~~~~~~~
+
+
 ``gmxapi`` operations
 ---------------------
 

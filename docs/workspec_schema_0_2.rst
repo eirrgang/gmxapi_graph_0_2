@@ -95,31 +95,33 @@ should be a valid SHA-256 hash, and allow serialization schemes individually to 
 allowing, for instance, the JSON scheme to encode a tuple of helpful prefix and uid hash with a safe delimiter
 (a character not used in the string encoding scheme used for the SHA-256 hash).
 
-Question: If an input value in a workflow is changed from a verifiably consistent result to an equivalent constant of a
-different "type", do we invalidate or preserve the downstream output validity? E.g. the work spec changes from
-"operationB.input = operationA.output" to "operationB.input = final_value(operationA)"
+.. admonition:: Question
 
-The question is moot if we either only consider final values for terminating execution or if we know exactly how many
-iterations of sequenced output we will have, but that is not generally true.
+    If an input value in a workflow is changed from a verifiably consistent result to an equivalent constant of a
+    different "type", do we invalidate or preserve the downstream output validity? E.g. the work spec changes from
+    "operationB.input = operationA.output" to "operationB.input = final_value(operationA)"
 
-Maybe we can leave the answer to this question unspecified for now and prepare for implementation in either case by
-recording more disambiguating information in the work specification (such as checksum of locally available files) and
-recording initial, ongoing, and final state very granularly in the session metadata. It could be that this would be
-an optimization that is optionally implemented by the Context.
+    The question is moot if we either only consider final values for terminating execution or if we know exactly how many
+    iterations of sequenced output we will have, but that is not generally true.
 
-It may be that we allow the user to decide what makes data unique. This would need to be very clearly documented, but
-it could be that provided parameters always become part of the unique ID and are always not-equal to unprovided/default
-values. Example: a ``load_tpr`` operation with a ``checksum`` parameter refers to a specific file and immediately
-produces a ``final`` output, but a ``load_tpr`` operation with a missing ``checksum`` parameter produces non-final
-output from whatever file is resolved for the operation at run time.
+    Maybe we can leave the answer to this question unspecified for now and prepare for implementation in either case by
+    recording more disambiguating information in the work specification (such as checksum of locally available files) and
+    recording initial, ongoing, and final state very granularly in the session metadata. It could be that this would be
+    an optimization that is optionally implemented by the Context.
 
-It may also be that some data occurs as a "stream" that does not make an operation unique, such as log file output or
-trajectory output that the user wants to accumulate regardless of the data flow scheme; or as a "result" that indicates
-a clear state transition and marks specific, uniquely produced output, such as a regular sequence of 1000 trajectory
-frames over 1ns, or a converged observable. "result"s must be mapped to the representation of the
-workflow that produced them. To change a workflow without invalidating results might be possible with changes that do
-not affect the part of the workflow that fed those results, such as a change that only occurs after a certain point in
-trajectory time.
+    It may be that we allow the user to decide what makes data unique. This would need to be very clearly documented, but
+    it could be that provided parameters always become part of the unique ID and are always not-equal to unprovided/default
+    values. Example: a ``load_tpr`` operation with a ``checksum`` parameter refers to a specific file and immediately
+    produces a ``final`` output, but a ``load_tpr`` operation with a missing ``checksum`` parameter produces non-final
+    output from whatever file is resolved for the operation at run time.
+
+    It may also be that some data occurs as a "stream" that does not make an operation unique, such as log file output or
+    trajectory output that the user wants to accumulate regardless of the data flow scheme; or as a "result" that indicates
+    a clear state transition and marks specific, uniquely produced output, such as a regular sequence of 1000 trajectory
+    frames over 1ns, or a converged observable. "result"s must be mapped to the representation of the
+    workflow that produced them. To change a workflow without invalidating results might be possible with changes that do
+    not affect the part of the workflow that fed those results, such as a change that only occurs after a certain point in
+    trajectory time.
 
 Serialization conventions
 -------------------------
@@ -145,9 +147,10 @@ noted below.
 Data dimensionality and graph topology is unambiguous with minimal processing
 apart from the underlying deserialization.
 
-TODO:
-*Define the deterministic way to identify a work graph and its artifacts for
-persistence across interruptions and to avoid duplication of work. I.e. fingerprinting.*
+.. admonition:: TODO
+
+    *Define the deterministic way to identify a work graph and its artifacts for
+    persistence across interruptions and to avoid duplication of work. I.e. fingerprinting.*
 
 .. _grammar:
 
@@ -616,11 +619,13 @@ operations at session launch.
   but also may be used at some point to manage checkpoints or data flow state
   checks at a higher level than the execution graph.
 
-Question: What do we want to say about the topology due to outputs that are
-arrays? Generally, it is hard to know the size and shape of an array before the
-operation executes. Can topology be dynamic? Should we insist that array
-dimensionality must asserted when the node is created? Or are we simply not able
-to scatter from arrays that are operation outputs?
+.. admonition:: Question
+
+    What do we want to say about the topology due to outputs that are
+    arrays? Generally, it is hard to know the size and shape of an array before the
+    operation executes. Can topology be dynamic? Should we insist that array
+    dimensionality must asserted when the node is created? Or are we simply not able
+    to scatter from arrays that are operation outputs?
 
 Logical Schematics
 ==================

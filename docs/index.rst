@@ -4,7 +4,7 @@ Work specification schema and API
 
 ..  toctree::
     :maxdepth: 2
-    :caption: Draft version 4 (2 November 2019)
+    :caption: Draft version 5 (11 November 2019)
 
     intro.rst
     workspec_schema_0_2.rst
@@ -31,8 +31,6 @@ Summary of changes proposed to the next document schema and API:
 - ``gmx.workflow.WorkElement`` class is replaced with an interface definition
   for an instance of an Operation. Users no longer create objects representing
   work directly.
-- Proposed: ``elements`` map name changed to ``nodes``?
-- Various API specified operations are moved or renamed.
 - User-provided ``name`` properties are replaced with two new properties.
 
   - ``label`` optionally identifies the entity to the user.
@@ -42,5 +40,11 @@ Summary of changes proposed to the next document schema and API:
     to facilitate
     reproducibility, optimization, and flexibility in graph manipulation.
 
+- *uid* is used as the node key.
+- ``namespace`` is merged into ``operation`` as an *array* entity.
+- *uid* is hashed from the *operation* and *input* members.
+  *TODO* prescriptive hash input normalization.
+- Various API specified operations are moved or renamed.
+- Proposed: ``elements`` map name changed to ``nodes``?
 - Proposed: Serialized work graphs may be bundled, nested as a map of named graphs. By
   convention, the graph named ``default`` would be examined as an entry point.

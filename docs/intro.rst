@@ -5,28 +5,37 @@ Documentation by example
 
 Simple simulation using :ref:`data sources <simulation input>` produced by previously defined work::
 
-   {
-       "version": "gmxapi_graph_0_2",
-       "elements":
-       {
-           "mdrun_<hash>":
-           {
-               "namespace": "gmxapi",
-               "operation": "mdrun",
-               "input":
-               {
-                  "parameters": "simulation_parameters_<hash>",
-                  "simulation_state": "initial_state_<hash>",
-                  "microstate": "initial_coordinates_<hash>"
-               },
-               "output":
-               {
-                  "trajectory": "gmxapi.Trajectory",
-                  "parameters": "gmxapi.Mapping"
-               },
-               "depends": []
-           }
-   }
+    {
+        "version": "gmxapi_graph_0_2",
+        "elements":
+        {
+            "<mdrun hash>":
+            {
+                "operation": ["gmxapi", "mdrun"],
+                "input":
+                {
+                    "parameters": "<simulation_parameters_hash>",
+                    "simulation_state": "<initial_state_hash>",
+                    "microstate": "<initial_coordinates_hash>"
+                },
+                "output":
+                {
+                    "trajectory":
+                    {
+                        "meta": { "resource": { "type": "gmxapi.simulation.Trajectory",
+                                                        "shape": [1] } }
+                    },
+                    "parameters": "gmxapi.Mapping"
+                },
+            }
+        }
+    }
+
+.. admonition:: Question
+
+    How do we handle the knowability of abstract outputs, such as
+    "parameters" whose keys are unknown when a node is added, or whose value type
+    and dimensionality cannot be known until runtime?
 
 .. rubric:: Example
 
@@ -36,47 +45,57 @@ graph.
 Simulation reading inputs from the filesystem, with an attached restraint from a
 pluggable extension module::
 
-   {
-       "version": "gmxapi_graph_0_2",
-       "elements":
-       {
-           "read_tpr_<hash>":
-           {
-               "label": "tpr_input",
-               "namespace": "gmxapi",
-               "operation": "read_tpr",
-               "input":
-               {
-                  "filename": ["topol.tpr"]
-               },
-               "output":
-               {
-                  "parameters": "gmxapi.Mapping",
-                  "simulation_state": "gmxapi.Mapping",
-                  "microstate": "gmxapi.NDArray"
+    {
+        "version": "gmxapi_graph_0_2",
+        "elements":
+        {
+            "<read_tpr hash>":
+            {
+                "label": "tpr_input",
+                "operation": ["gmxapi", "read_tpr"],
+                "input":
+                {
+                   "filename": ["topol.tpr"]
+                },
+                "output":
+                {
+                    "parameters": "gmxapi.Mapping",
+                    "simulation_state": "gmxapi.simulation.SimulationState",
+                    "microstate": { "meta": { "resource": { "type": "gmxapi.Float64",
+                                                            "shape": [<N>, 6] } } }
                }
-           }
-           "mdrun_<hash>":
-           {
-               "label": "md_simulation_1",
-               "namespace": "gmxapi",
-               "operation": "mdrun",
-               "input": "read_tpr_<hash>",
-               "depends": ["ensemble_restraint_<hash>.interface.potential"]
-           }
-           "ensemble_restraint_<hash>":
-           {
-               "label": "ensemble_restraint_1",
-               "namespace": "myplugin",
-               "operation": "ensemble_restraint",
-               "input":
-               {
-                   "params": {},
-               },
-               "interface": {"potential": "gromacs.restraint"}
-           }
-       }
-   }
+            }
+            "<mdrun_hash>":
+            {
+                "label": "md_simulation_1",
+                "operation": ["gmxapi", "mdrun"],
+                "input":
+                {
+                    "parameters": "<read_tpr_hash>.parameters",
+                    "simulation_state": "<read_tpr_hash>.simulation_state",
+                    "microstate": "<read_tpr_hash>.microstate",
+                    "potential": ["<ensemble_restraint_hash>.interface.potential"]
+                }
+            }
+            "<ensemble_restraint_hash>":
+            {
+                "label": "ensemble_restraint_1",
+                "operation": ["myplugin", "ensemble_restraint"],
+                "input":
+                {
+                    "params": {<key-value pairs...>},
+                },
+                "interface":
+                {
+                    "potential":
+                    {
+                        "meta": { "resource": { "type": "gromacs.restraint",
+                                                "shape": [1] } }
+                    }
+                }
+            }
+        }
+    }
 
 .. rubric:: Example
 
@@ -96,9 +115,8 @@ Graph node structure example::
         "version": "gmxapi_graph_0_2",
         "elements":
         {
-            "filemap_aaaaaa": {
-                "namespace": "gmxapi",
-                "operation": "make_map",
+            "<filemap_hash1>": {
+                "operation": ["gmxapi", "make_map"],
                 "input": {
                     "-f": ["some_filename"],
                     "-t": ["filename1", "filename2"]
@@ -107,45 +125,37 @@ Graph node structure example::
                     "file": "gmxapi.Mapping"
                 }
             },
-            "cli_op_aaaaaa": {
+            "<cli_op_hash1>": {
                 "label": "exe1",
-                "namespace": "gmxapi",
-                "operation": "cli",
+                "operation": ["gmxapi", "cli"],
                 "input": {
                     "executable": ["some_executable"], # list length gives data edge width
-                    "arguments": [[]], # Nested list allows disambiguation of array data within a single ensemble member.
-                    "input_file_arguments": "filemap_aaaaaa",
-                    # Complex values can use indirection to helper operations
-                    # to reduce parsing complexity.
-                    # Alternatively,
-                    # we could make parsing recursive and allow arbitrary nesting
-                    # with special semantics for dictionaries (as well as lists)
+                    "arguments": [],
+                    "input_file_arguments": "<filemap_hash1>",
                 },
                 "output": {
                     "file": "gmxapi.Mapping"
                 }
             },
-            "filemap_bbbbbb: {
+            "<filemap_hash2>: {
                 "label": "exe1_output_files",
-                "namespace": "gmxapi",
-                "operation": "make_map",
+                "operation": ["gmxapi", make_map"],
                 "input": {
-                    "-in1": "cli_op_aaaaaa.output.file.-o",
+                    "-in1": "<cli_op_hash1>.output.file.-o",
                     "-in2": ["static_fileB"],
                     "-in3": ["arrayfile1", "arrayfile2"] # matches dimensionality of inputs
                 }
             },
-            "cli_op_bbbbbb": {
+            "<cli_op_hash2>": {
                 "label": "exe2",
                 "namespace": "gmxapi",
-                "operation": "commandline",
+                "operation": ["gmxapi", "commandline"],
                 "input": {
                     "executable": [],
                     "arguments": [],
-                    "input_file_arguments": "filemap_bbbbbb"
-                },
-            },
-
+                    "input_file_arguments": "<filemap_hash2>"
+                }
+            }
         }
     }
 
@@ -233,12 +243,12 @@ warrant different sorts of optimizations. We should also consider the Google
                         {
                             "lhs": "add_float_<hash>.output.data",
                             "rhs": [[6.]]
-                        }
+                        },
                         "output":
                         {
                             "data": "gmxapi.Bool"
                         }
-                    }
+                    },
                     "add_float_<hash>":
                     {
                         "namespace": "gmxapi.test",
@@ -256,7 +266,7 @@ warrant different sorts of optimizations. We should also consider the Google
                 }
             }
         }
-    ]
+    }
 
 Goals
 =====

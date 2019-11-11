@@ -79,11 +79,21 @@ values that are available to the Context.
 The entire record, as well as individual elements, have a well-defined hash that can be used to compare work for
 functional equivalence.
 
-State is not contained in the work specification, but state is attributable to a work specification.
+State is not contained in the work specification (abstract graph), but state is attributable to a work specification.
 
-If we can adequately normalize utf-8 Unicode string representation, we could checksum the full text,
+If we can adequately normalize utf-8 Unicode string representation, we could checksum the full text (filtering
+details that do not affect uniqueness),
 but this may be more work than defining a scheme for hashing specific data or letting each operation define its own
 comparator.
+
+The present examples allow *uid* to consist of an arbitrary string that is verifiable with the help of operation
+implementation details. By convention, the *uid* consists of a string of alphanumeric and underscore characters,
+suffixed by a string-encoded hash. This allows some human readability of graph contents through examination of only
+the element keys. It may seem inelegant to require string processing to extract the hash. The uid is only used for
+look-up and equality testing, and does not need to be decoded. However, it may be preferable to assert that the uid
+should be a valid SHA-256 hash, and allow serialization schemes individually to determine how the uid is serialized/deserialized,
+allowing, for instance, the JSON scheme to encode a tuple of helpful prefix and uid hash with a safe delimiter
+(a character not used in the string encoding scheme used for the SHA-256 hash).
 
 Question: If an input value in a workflow is changed from a verifiably consistent result to an equivalent constant of a
 different "type", do we invalidate or preserve the downstream output validity? E.g. the work spec changes from
@@ -109,8 +119,7 @@ a clear state transition and marks specific, uniquely produced output, such as a
 frames over 1ns, or a converged observable. "result"s must be mapped to the representation of the
 workflow that produced them. To change a workflow without invalidating results might be possible with changes that do
 not affect the part of the workflow that fed those results, such as a change that only occurs after a certain point in
-trajectory time. Other than the intentional ambiguity that could be introduced with parameter semantics in the previous
-paragraph,
+trajectory time.
 
 Serialization conventions
 -------------------------
@@ -476,6 +485,32 @@ interface
   code may advertise itself as a pluggable force calculation with a
   *interface.potential* port.
 
+Discussion
+~~~~~~~~~~
+
+Note that there may be some unnecessary information (bloat) between *operation*,
+*namespace*, and *uid*. The *namespace* may already contain nesting information
+using period delimiters, so the operation and namespace could be combined.
+
+They were originally kept separate to allow for semantics by which an operation
+could be implemented in multiple namespaces. Such semantics have not been
+developed and are inherently problematic due to the implied coordination.
+The scenario is obviated by more recent semantics, in which an operation can
+declare its output in terms of a *type* meta-object resolvable through the API.
+
+By convention, the *uid* contains a short indication of the operation being
+performed, which is potentially redundant. To avoid redundancy, we could either
+encode the namespace and operation in the element key, or remove it from the
+element key. Note that the *uid* is currently provided directly by the operation
+implementation, while the namespace and operation values are mediated by the
+Context. Expression of the *uid* and/or element key should be moved to the
+responsibility of the Context and/or Serializer, using helper functions from the
+operation implementation under the fingerprinting behavior.
+
+Further note that (as a value, but not as a key) the combined namespace and
+operation could reasonably be represented as an array of strings, rather than
+as an internally delimited string.
+
 .. _simulation input:
 
 Simulation input
@@ -587,13 +622,180 @@ operation executes. Can topology be dynamic? Should we insist that array
 dimensionality must asserted when the node is created? Or are we simply not able
 to scatter from arrays that are operation outputs?
 
-Reference implementation
-========================
+Logical Schematics
+==================
 
-A reference implementation in Python can heavily rely on the ``json`` module,
+Serialization
+-------------
+
+For the following reasons, *elements* are serialized as an associative *object*
+instead of as a sequence, or *array* of *objects*.
+
+1. A directed acyclic graph may have multiple topologically valid sequences.
+2. Node records are arbitrarily large, and do not lend themselves to a dense array
+   data type.
+3. In-memory representations likely use associative data structures to allow
+   node look-ups or node deletions.
+4. Access to graph sections, while possibly benefitting from monotonicity optimizations,
+   do not necessarily access contiguous members of a sequence.
+
+The serialized document must contain a *version* and *elements* member.
+Object sequence is unspecified.
+
+.. uml::
+
+    start
+
+    :GraphSerializer;
+    fork
+        :version: str;
+    fork again
+        partition "foreach element" {
+            fork
+                :label: str;
+            fork again
+                :namespace: str;
+            fork again
+                :operation: str;
+            fork again
+                partition "foreach input" {
+                    if (is reference) then (encode reference)
+                        :reference: str;
+                        :meta: mapping;
+                    elseif (is collection) then (encode collection)
+                        :label: mapping;
+                    else (typed data)
+                        :label: sequence;
+                    endif
+                }
+                :inputs: mapping;
+            fork again
+                partition "foreach resource" {
+                }
+                :outputs and interfaces: mapping;
+            end fork
+        }
+        :elements: mapping;
+    end fork
+    :SerializedRecordEncoder;
+
+
+
+Deserialization
+---------------
+
+1. Produce native associative data structure from JSON encoded document.
+2. Check *version* member for version string ``gmxapi_graph_0_2``.
+3. Parse *elements* object.
+4. Validate directed acyclic graph topology.
+5. Instantiate concrete graph.
+
+Graph parsing
+-------------
+
+For each member of *elements*:
+2. Validate *namespace* and *operation*.
+3. Resolve *input* references.
+4. Use operation helpers (API) to validate input type and shape.
+5. Use operation helpers (API) to validate advertised resources in terms of input.
+6. Use operation helpers to validate node fingerprint.
+
+Native graph management
+-----------------------
+
+To allow early error detection, API implementations should impose some usage
+requirements.
+
+All references in an element must resolve at the time it is added to the graph.
+
+Once an element is added to the graph, it is immutable. Otherwise, we would need
+to define update propagation behavior that may trigger multiple errors.
+An allowable exception would be to permit elements to be removed from a graph
+if and only if there are no dependent elements already in the graph.
+
+Possible optimizations or hooks
+===============================
+
+JSON deserialization in Python
+------------------------------
+
+A more refined implementation in Python could heavily rely on the ``json`` module,
 supplemented through the *object_hook* and *object_pairs_hook* to the
-``json.JSONDecoder``.
+``json.JSONDecoder``. ``raw_decode()`` may facilitate dispatching decoding logic
+within the document to save memory on temporary structures, but these have not
+been investigated.
 
 Note that it is non-trivial to deserialize JSON arrays directly to native arrays
 for several reasons related to the flexibility of allowed array data in the JSON
 document (most notably, the dimensionality).
+
+Graph decoding
+--------------
+
+The associative structure of *element* *objects* produced by the JSON deserializer
+does not have a guaranteed sequence.
+
+Multi-step implementations likely fall into two categories.
+
+.. rubric:: Deserialize, sequence, construct.
+
+1. Deserialize the *elements* object to an associative structure.
+2. Sequence the *elements*.
+3. Initialize a DAG in a topologically valid sequence, such that the graph is
+   always valid and nodes may be verified as they are added.
+
+.. rubric:: Deserialize, stage, validate, construct.
+
+1. Deserialize the *elements* object to an associative structure.
+2. Stage the element records into a graph-aware data structure.
+3. Validate that the structure contains a single connected directed acyclic graph.
+4. Instantiate a native representation of the graph, with API validation.
+
+For our reference implementation, we use the latter approach to leverage existing
+tools, separate levels of input validation, and avoid the lure of premature
+optimization. Though potentially inefficient for small graphs, the memory usage
+and performance is predictable, there is minimal branching, and the only code
+that is not Order(N) is the native hash algorithm for looking up *node* and *edge*
+identifiers in the DAG or native graph representation.
+
+Nearly Order(N) solutions are plausible if arbitrary parallelism and memory
+usage are available to perform the sequencing, but would require additional
+checks. E.g. a parallel event queue (when node instantiation events trigger the
+completeness of a staged node's inputs, it may add an instantiation event),
+but invalid (cyclic or incomplete) input would cause the event queue to stall.
+
+Reference implementation
+========================
+
+..
+    Note that the plantuml output can be retreived from the web server.
+
+    Alternatively, use the ``.. uml::`` directive and add the following notes to the README:
+
+        Assumes plantuml is installed and that a wrapper script exists at
+        `/usr/local/bin/plantuml` as described at
+        https://pypi.org/project/sphinxcontrib-plantuml/
+
+        Then,
+
+            pip install sphinxcontrib-plantuml
+            sphinx-build -b html -c docs docs build/html
+            open build/html/index.html
+
+.. uml::
+
+    WorkGraph -> WorkDeserializer: from_json()
+    WorkDeserializer -> JSONDeserializer: <<utf-8>>
+    WorkDeserializer <- JSONDeserializer
+    WorkGraph <- WorkDeserializer
+
+..
+    Edit the source by pasting the image URL at http://www.plantuml.com/plantuml/
+
+.. .. image:: http://www.plantuml.com/plantuml/svg/SoWkIImgAStDuL80Wl3yecpteiI230LTEp379RKujIWpCIUpAhN8IY6jA3ytFgiuFqz34wGSGmL8brUmln-gBXkRqf8qNGixE-nwR7GnzA2w1QW2GnUNGsfU2j3L0000
+
+..
+    As a further alternative, the source is embedded in the generated SVG or can
+    be retrieved from the URL with `-decodeurl` using the command line tool. For
+    PNG output, there is the `-metadata` CLI option, but who wants PNG?
+    Ref: http://plantuml.com/command-line

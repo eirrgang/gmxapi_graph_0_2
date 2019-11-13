@@ -13,7 +13,7 @@ Test code for Python package in `test`. Run with pytest.
 
 Builds with Sphinx and Plantuml.
 
-    pip install sphinxcontrib-plantuml
+    pip install sphinxcontrib-plantuml sphinx-rtd-theme
     sphinx-build -b html -c docs docs build/html
     open build/html/index.html
 

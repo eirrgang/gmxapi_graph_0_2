@@ -1,5 +1,6 @@
-Documentation by example
-========================
+=========================
+Sample work graph records
+=========================
 
 .. rubric:: Example
 
@@ -101,7 +102,7 @@ pluggable extension module::
 
 Illustrate the implementation of the command line wrapper.
 
-The *gmxapi* Python package contains a helper :py:func:`gmxapi.commandline_operation`
+The :py:mod:`gmxapi` Python package contains a helper :py:func:`gmxapi.commandline_operation`
 that was implemented in terms of more strictly defined operations.
 The :py:func:`gmxapi.commandline.cli` operation is aware only of an arbitrarily
 long array of command line arguments. The wrapper script constructs the
@@ -163,7 +164,7 @@ Graph node structure example::
 
 Subgraph specification and use. Illustrate the toy example of the subgraph test.
 
-The *gmxapi.test* module contains the following code::
+The :py:mod:`gmxapi.test` module contains the following code::
 
     import gmxapi as gmx
 
@@ -194,8 +195,11 @@ concrete primary work graph from the abstract graph defining the data flow in
 the subgraph. Note that a subgraph description is a special case of the
 description of a fused operation, which we may need to explore when considering
 how Context implementations may support dispatching between environments that
-warrant different sorts of optimizations. We should also consider the Google
-"protocol buffer" and gRPC syntax and semantics.
+warrant different sorts of optimizations.
+
+.. note::
+
+    We should also consider the Google "protocol buffer" and gRPC syntax and semantics.
 
 ::
 
@@ -267,127 +271,3 @@ warrant different sorts of optimizations. We should also consider the Google
             }
         }
     }
-
-Goals
-=====
-
-- Serializeable representation of a molecular simulation and analysis workflow
-  that is
-
-  - complete enough for abstractly specified work to be unambiguously translated to API calls, and
-  - simple enough to be robust to API updates and uncoupled from implementation details.
-- Facilitate easy integration between independent but compatible implementation code in Python or C++.
-- Support verifiable compatibility with a given API level.
-- Provide enough information to uniquely identify the "state" of deterministic inputs and outputs.
-
-For the last point, the meaning of "deterministic" is explored in the following
-discussions on uniqueness, deduplication, independent trials, and checkpointing.
-
-Terms (more clarification needed)
-=================================
-
-These two terms are borrowed from TensorFlow:
-
-Context
-  Abstraction for the entity that maps work to a computing environment.
-
-Session
-  Abstraction for the entity representing work that is executing on resources
-  allocated by an instance of a Context implementation.
-
-The above terms roughly map to terms like *Executor* and *Task* in other frameworks.
-Distinctions relate to the lifetime of the *Context* instance, and the fact that
-it owns both the work specification (including operation and data handles)
-and the computing resources.
-The *Context* instance owns resources (on behalf of the client) that may
-otherwise be owned directly by the client, and so its lifetime must span all
-references to resources, operation handles, and data futures.
-
-Operation
-  A well defined computational element or data transformation that can be used
-  to add computational work to a graph managed by a Context. Operation inputs
-  are strongly specified, and behavior for a given set of inputs is deterministic
-  (within numerical stability). Operation outputs may not be well specified
-  until inputs are bound.
-
-Operation instance / reference / handle
-  A node in a work graph. Previously described as *WorkElement*.
-
-Element
-  Another term used to name work nodes or operation instances.
-
-Operation factory / helper
-  The syntax of UI-level functions that instantiate operations is specified by
-  the API, but can extend the syntax implied by the serialized representation
-  of a node for flexibility and user-friendliness.
-
-port
-  Generic term for a named source, sink, resource, or binding hook on a node.
-
-resource
-  Describes an API hook for an interaction mediated by a Context. Data flow
-  is described as *immutable* resources (generally produced as Operation outputs)
-  that can be consumed by binding to Operation inputs or by extracting as *result*s
-  from the API. Some interactions cannot be represented in terms of producers
-  and subscribers of immutable data events: *Mutable* resources cannot be
-  managed by the Context as data events and require different work scheduling
-  policies that either (a) allows arbitrary (unscheduled) call-back through the API framework,
-  (b) dispatch the mutable resource collaboration to another Context, or (c)
-  allow operations to bind and interact with an interface not specified by the
-  API or not known to the responsible Context implementation. Examples include
-  the Context-provided *ensemble_reduce* functionality, the ensemble simulation
-  signaling facility (by which extension code can terminate a simulation early),
-  and the binding mechanism by which MD extension code can be attached to an
-  *MD* operation as a plugin. The nature of a resource is indicated by the
-  namespace of its *port* in the work record.
-
-Concrete graph definition and state of execution
-================================================
-
-Launch and relaunch: recoverability
------------------------------------
-
-To be able to recover the state of an executing graph after an interruption,
-we need to be able to
-
-1. identify whether or not work has been partially completed, and
-#. reconcile checkpoint data for graph nodes and edges, which may not all (at least initially) be on the same computing
-   host.
-
-Discoverability of work graph state
------------------------------------
-
-We need to robustly discover and characterize data and checkpointing artifacts
-to minimize unnecessary computation and data while supporting scientifically
-relevant reproducible results (for an acceptable definition of "reproducible").
-
-Due to numerical optimizations, molecular simulation results for the exact same
-inputs and parameters may not produce output that is binary identical,
-but which should be treated as scientifically equivalent.
-We need to be able to identify equivalent rather than identical output.
-Input that draws from the results of a previous operation should be able to verify whether
-valid results for any identically specified operation exists, or at what state it is in progress.
-
-Contrast this with the need to distinguish between similar results that represent independent trials.
-Briefly, this means tracking data that users (and application developers) may not
-be accustomed to tracking, such as pseudo-random initialization (PRNG seeds) or dynamic input.
-
-Granularity versus abstraction
-------------------------------
-
-The degree of granularity in the work specification has ideological and practical
-implications, affecting
-
-* room for optimization,
-* the amount of data in the work specification,
-* its human-readability / editability, and
-* the amount of additional metadata that needs to be stored in association with a Session.
-
-Graph state versus work state
------------------------------
-
-If one element is added to the end of a work specification, results of the previous operations should not be
-invalidated.
-
-If an element at the beginning of a work specification is added or altered, "downstream" data should be easily
-invalidated.

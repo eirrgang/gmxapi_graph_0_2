@@ -1,5 +1,9 @@
+========================
 gmxapi 0.1 specification
 ========================
+
+Core API concepts
+=================
 
 Interfaces and/or Base classes
 ------------------------------

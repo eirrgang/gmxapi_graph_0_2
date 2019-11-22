@@ -13,3 +13,4 @@ Software requirements specification
     srs/intro
     srs/requirements
     srs/glossary
+    srs/appendix

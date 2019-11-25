@@ -36,8 +36,7 @@ Summary of changes proposed to the next document schema and API:
 
 - *uid* is used as the node key.
 - ``namespace`` is merged into ``operation`` as an *array* entity.
-- *uid* is hashed from the *operation* and *input* members.
-  *TODO* prescriptive hash input normalization.
+- *uid* hash is prescriptively normalized.
 - Various API specified operations are moved or renamed.
 - Proposed: ``elements`` map name changed to ``nodes``?
 - Proposed: Serialized work graphs may be bundled, nested as a map of named graphs. By
@@ -640,17 +639,33 @@ support conversion to a :term:`uid`.
 We currently allow :term:`operations <operation>` to define their own fingerprint,
 but we are developing conventions and should converge on a specification.
 
-Suggestion
-~~~~~~~~~~
+Current convention
+~~~~~~~~~~~~~~~~~~
 
-Calculate the SHA-256 digest of the UTF-8 byte sequence resulting from a compact
-JSON encoding (white space removed) of the identifying characteristics.
+Calculate the SHA-256 digest of the UTF-8 byte sequence resulting from a
+:term:`compact JSON encoding` of the identifying characteristics.
 
 The encoded JSON record contains the members :term:`operation`, :term:`input`,
 and :term:`depends` as described above, and serialized as described in the
 `Serialization conventions`_.
 
 JSON object members are sorted by key.
+
+.. glossary::
+
+    compact JSON encoding
+        White space is removed.
+        Trailing zeroes are removed from floating point fractional values.
+        Floating point numbers are exact.
+
+.. warning:: Float encoding is not unique.
+
+    JSON encoders may use standard or "scientific" notation, and may use either
+    upper or lower case ``e`` to separate the mantissa from the exponent.
+    (See "number" at http://json.org)
+    We are currently relying on the default behavior of the Python :py:mod:`json`
+    module, which does not provide helpfully granular hooks or parameters to
+    normalize the floating point representation.
 
 Caveats
 ~~~~~~~
@@ -664,6 +679,8 @@ For string representations of object references, this condition is met by
 including the :term:`uid` in references to data references and by assuming a
 controlled namespace for fully-qualified code/type references.
 
+.. rubric:: Caveat
+
 Values referring to data outside of the API requires special treatment.
 Most notably, it is inadequate to refer to filesystem data simply by file name.
 String representation of files should be discouraged, and we should provide
@@ -675,9 +692,22 @@ Context implementation::
     "input": {"filename": <relative file path>,
               "md5": <md5 checksum>}
 
+.. rubric:: Caveat
+
 Floating point numbers do not have unique JSON encodings.
 We should normalize the formatting of floating point values or convert them to
 an architecture-independent binary representation (byte sequence).
+
+Suggestion
+~~~~~~~~~~
+
+Instead of using the digest of a JSON encoding, use a more deterministic
+byte-serialization format, such as XDR.
+
+XDR libraries are widely available. Python includes one in its standard library.
+GROMACS already uses XDR for its portable binary data.
+
+Specify "network byte order" to answer the endianness question.
 
 Deserialization heuristics
 --------------------------

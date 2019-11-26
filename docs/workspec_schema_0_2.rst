@@ -639,9 +639,9 @@ established.
 Fingerprint
 -----------
 
-A node is completely characterized by its :token:`operation` and the resources
-it consumes. In the present specification, these are given by :token:`input`
-and :token:`depends`
+A node is completely characterized by its :term:`operation` and the resources
+it consumes. In the present specification, these are given by :term:`input`
+and :term:`depends`
 
 An object representing a fingerprint must support equality testing and must
 support conversion to a :term:`uid`.

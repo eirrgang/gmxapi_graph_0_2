@@ -674,8 +674,9 @@ JSON object members are sorted by key.
     upper or lower case ``e`` to separate the mantissa from the exponent.
     (See "number" at http://json.org)
     We are currently relying on the default behavior of the Python :py:mod:`json`
-    module, which does not provide helpfully granular hooks or parameters to
+    module, though we could derive from :py:class:`json.JSONEncoder` to
     normalize the floating point representation.
+    Ref: https://docs.python.org/3/library/json.html#json.JSONEncoder.default
 
 Caveats
 ~~~~~~~

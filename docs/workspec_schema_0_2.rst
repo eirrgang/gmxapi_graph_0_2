@@ -391,6 +391,16 @@ following grammar.
     reference: `uid` ["." nestedlabel]
     nestedlabel: `label` [`subscript`] ["." nestedlabel]
 
+.. admonition:: Question
+
+    Is a 256 bit SHA digest enough of a key space for references and uids?
+    2^256 is about 1.e+77.
+    Assuming perfect randomization, I believe the chance of collision should go
+    as N^2 for "small" N, which should mean that the chance of collision amongst
+    trillions of keys is still astronomically small (<< 10^-50). That seems safe
+    to me, but we could suggest that implementations also verify the operation
+    of a node looked up by :term:`uid` alone.
+
 .. rubric:: Output values and interfaces
 
 Operation nodes express ownership of resources by enumerating *ports*, which

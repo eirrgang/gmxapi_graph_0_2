@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'gmxapi_graph_0_2'
+project = 'SCALE-MS effort coordination'
 copyright = '2019, M. Eric Irrgang'
 author = 'M. Eric Irrgang'
 
@@ -53,6 +53,7 @@ exclude_patterns = []
 # a list of builtin themes.
 #
 html_theme = 'default'
+html_theme = 'sphinx_rtd_theme'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

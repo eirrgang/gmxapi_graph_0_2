@@ -6,6 +6,8 @@ Serializable work
     :local:
     :depth: 2
 
+..  include:: samples.rst
+
 Changes in second version
 =========================
 

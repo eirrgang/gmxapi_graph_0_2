@@ -17,9 +17,9 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'SCALE-MS effort coordination'
-copyright = '2019, M. Eric Irrgang'
-author = 'M. Eric Irrgang'
+project = 'SCALE-MS'
+copyright = '2019'
+author = 'SCALE-MS collaboration'
 
 # The full version, including alpha/beta/rc tags
 release = '0'
@@ -53,7 +53,6 @@ master_doc = 'index'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'default'
 html_theme = 'sphinx_rtd_theme'
 
 # Add any paths that contain custom static files (such as style sheets) here,

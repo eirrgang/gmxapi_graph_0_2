@@ -1,5 +1,5 @@
 ========================
-gmxapi 0.1 specification
+gmxapi 0.2 specification
 ========================
 
 Core API concepts
